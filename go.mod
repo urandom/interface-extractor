@@ -1,4 +1,4 @@
-module github.com/urandom/go-interface-extractor
+module github.com/urandom/interface-extractor
 
 go 1.13
 
