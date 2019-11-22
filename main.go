@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -50,11 +49,6 @@ func main() {
 	if err != nil {
 		log.Fatalln("Error loading packages", err)
 	}
-
-	spew.Config.SortKeys = true
-	spew.Config.DisableCapacities = true
-	spew.Config.DisableMethods = true
-	spew.Config.MaxDepth = 11
 
 	for _, p := range packages {
 		c, err := locateType(*typeF, p)
