@@ -163,7 +163,7 @@ func newConcrete(p *packages.Package, x, sel string, m Methoder) *Concrete {
 
 	for i := 0; i < m.NumMethods(); i++ {
 		tM := m.Method(i)
-		if !tM.Exported() {
+		if !tM.Exported() && x != p.Name {
 			continue
 
 		}
@@ -306,7 +306,7 @@ func writeTo(c *Concrete, w io.Writer, cfg config) error {
 				_, ok = included[name]
 			}
 
-			if strings.HasSuffix(path, "/"+name) {
+			if strings.HasSuffix(path, "/"+name) || path == name {
 				fmt.Fprintf(&b, "\t%q\n", path)
 			} else {
 				fmt.Fprintf(&b, "\t%s %q\n", name, path)
@@ -329,7 +329,7 @@ func writeTo(c *Concrete, w io.Writer, cfg config) error {
 		}
 
 		fmt.Fprintf(&b, "\t%s(", m.Name)
-		writeParams(m.Params, &b, pkgRewrites)
+		writeParams(m.Params, &b, c.PackageName, pkgRewrites)
 		b.WriteString(")")
 
 		if len(m.Returns) > 0 {
@@ -338,7 +338,7 @@ func writeTo(c *Concrete, w io.Writer, cfg config) error {
 				b.WriteString("(")
 			}
 
-			writeParams(m.Returns, &b, pkgRewrites)
+			writeParams(m.Returns, &b, c.PackageName, pkgRewrites)
 
 			if len(m.Returns) > 1 {
 				b.WriteString(")")
@@ -359,7 +359,7 @@ func writeTo(c *Concrete, w io.Writer, cfg config) error {
 	return err
 }
 
-func writeParams(params []Param, w io.Writer, pkgRewrites map[string]string) {
+func writeParams(params []Param, w io.Writer, dstPkg string, pkgRewrites map[string]string) {
 	for i, p := range params {
 		if i > 0 {
 			w.Write([]byte(", "))
@@ -372,7 +372,9 @@ func writeParams(params []Param, w io.Writer, pkgRewrites map[string]string) {
 		dotIdx := strings.LastIndex(kind, ".")
 		if dotIdx != -1 {
 			pkg := kind[:dotIdx]
-			if rewrite := pkgRewrites[pkg]; rewrite != "" {
+			if pkg == dstPkg {
+				kind = kind[dotIdx+1:]
+			} else if rewrite := pkgRewrites[pkg]; rewrite != "" {
 				kind = rewrite + kind[dotIdx:]
 			}
 		}
