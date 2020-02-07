@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -61,10 +62,17 @@ func main() {
 			continue
 		}
 
-		if err := writeTo(c, os.Stdout, cfg); err != nil {
+		writer, err := getWriter(deriveName(c, cfg.Name), filepath.Dir(p.GoFiles[0]), cfg)
+		if err != nil {
+			log.Println("Error getting output writer:", err)
+			continue
+		}
+		if err := writeTo(c, writer, cfg); err != nil {
+			writer.Close()
 			log.Printf("Error writing interface: %v", err)
 			continue
 		}
+		writer.Close()
 	}
 }
 
@@ -233,7 +241,21 @@ func deriveName(c *Concrete, nameF string) string {
 	return c.Name + "er"
 }
 
-func deriveFileName(name, output string) string {
+func getWriter(name, path string, cfg config) (io.WriteCloser, error) {
+	if cfg.Output == "-" {
+		return nopCloser{os.Stdout}, nil
+	}
+
+	filename := deriveFileName(name, path, cfg.Output)
+	f, err := os.Create(filename)
+	if err != nil {
+		return nil, fmt.Errorf("creating file %s: %v", filename, err)
+	}
+
+	return f, nil
+}
+
+func deriveFileName(name, path, output string) string {
 	if output != "" {
 		return output
 	}
@@ -247,7 +269,7 @@ func deriveFileName(name, output string) string {
 		conv = conv[1:]
 	}
 
-	return conv + ".go"
+	return filepath.Join(path, conv+"_gen.go")
 }
 
 func writeTo(c *Concrete, w io.Writer, cfg config) error {
@@ -385,4 +407,12 @@ func writeParams(params []Param, w io.Writer, dstPkg string, pkgRewrites map[str
 
 		fmt.Fprintf(w, "%s", kind)
 	}
+}
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (c nopCloser) Close() error {
+	return nil
 }
