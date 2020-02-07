@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -387,17 +388,20 @@ func writeParams(params []Param, w io.Writer, dstPkg string, pkgRewrites map[str
 			w.Write([]byte(", "))
 		}
 		kind := p.Type.String()
+		identStart := strings.IndexFunc(kind, func(r rune) bool {
+			return unicode.IsLetter(r)
+		})
 		idx := strings.LastIndex(kind, "/")
 		if idx > -1 {
-			kind = kind[idx+1:]
+			kind = kind[:identStart] + kind[idx+1:]
 		}
 		dotIdx := strings.LastIndex(kind, ".")
 		if dotIdx != -1 {
-			pkg := kind[:dotIdx]
+			pkg := kind[identStart:dotIdx]
 			if pkg == dstPkg {
-				kind = kind[dotIdx+1:]
+				kind = kind[:identStart] + kind[dotIdx+1:]
 			} else if rewrite := pkgRewrites[pkg]; rewrite != "" {
-				kind = rewrite + kind[dotIdx:]
+				kind = kind[:identStart] + rewrite + kind[dotIdx:]
 			}
 		}
 
