@@ -140,6 +140,24 @@ func locateType(selector string, p *packages.Package) (*Concrete, error) {
 	return c, nil
 }
 
+func locateInterface(c *Concrete, p *packages.Package, cfg config) {
+	name := deriveName(c, cfg.Name)
+	for i, obj := range p.TypesInfo.Defs {
+		if name != i.Name {
+			continue
+		}
+
+		if iface, ok := obj.Type().Underlying().(*types.Interface); ok {
+			for i := 0; i < iface.NumExplicitMethods(); i++ {
+				method := iface.ExplicitMethod(i)
+				c.Used[method.Name()] = struct{}{}
+			}
+		}
+
+		break
+	}
+}
+
 func methoderFromType(typ types.Type) Methoder {
 	if pointer, ok := typ.(Pointer); ok {
 		typ = pointer.Elem()
@@ -170,9 +188,16 @@ func exprFilter(t types.TypeAndValue, sel string, x string) Methoder {
 func newConcrete(p *packages.Package, x, sel string, m Methoder) *Concrete {
 	c := &Concrete{Name: sel, PackageName: x, PackagePath: m.Obj().Pkg().Path(), FoundIn: p.Name, AllMethods: make([]Method, 0, m.NumMethods()), Used: map[string]struct{}{}}
 
+	c.AllMethods = getMethods(m, x != p.Name)
+
+	return c
+}
+
+func getMethods(m Methoder, differentPkg bool) []Method {
+	methods := make([]Method, 0, m.NumMethods())
 	for i := 0; i < m.NumMethods(); i++ {
 		tM := m.Method(i)
-		if !tM.Exported() && x != p.Name {
+		if !tM.Exported() && differentPkg {
 			continue
 
 		}
@@ -202,10 +227,10 @@ func newConcrete(p *packages.Package, x, sel string, m Methoder) *Concrete {
 			}
 		}
 
-		c.AllMethods = append(c.AllMethods, m)
+		methods = append(methods, m)
 	}
 
-	return c
+	return methods
 }
 
 func locateUsedMethods(c *Concrete, p *packages.Package) {
@@ -226,6 +251,8 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 
 		c.Used[n.Name] = struct{}{}
 	}
+
+	locateInterface(c, p, cfg)
 }
 
 func deriveName(c *Concrete, nameF string) string {
