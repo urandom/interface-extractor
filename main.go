@@ -5,7 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/token"
 	"go/types"
 	"io"
 	"log"
@@ -37,7 +39,6 @@ func init() {
 	flag.StringVar(&cfg.Tags, "tags", "", "build tags to add")
 	flag.StringVar(&cfg.Package, "package", "", "name of the package for the generated file. Blank for the first loaded package")
 	flag.StringVar(&cfg.Output, "output", "", "output name. Blank for derived. '-' for stdout")
-
 }
 
 func main() {
@@ -79,7 +80,7 @@ func main() {
 
 func load(patterns ...string) ([]*packages.Package, error) {
 	return packages.Load(&packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedDeps | packages.NeedImports,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedDeps | packages.NeedImports | packages.NeedSyntax,
 	}, patterns...)
 }
 
@@ -101,6 +102,7 @@ type Concrete struct {
 	FoundIn     string
 	AllMethods  []Method
 	Used        map[string]struct{}
+	Pos         token.Pos
 }
 
 type Method struct {
@@ -122,14 +124,20 @@ func locateType(selector string, p *packages.Package) (*Concrete, error) {
 
 	var c *Concrete
 	x, sel := parts[0], parts[1]
-	for _, t := range p.TypesInfo.Types {
-		m := exprFilter(t, sel, x)
+	for _, v := range p.TypesInfo.Defs {
+		if v == nil {
+			continue
+		}
+		m := methoderFromType(v.Type())
 		if m == nil {
 			continue
 		}
 
-		c = newConcrete(p, x, sel, m)
-
+		obj := m.Obj()
+		if obj.Pkg() == nil || x != obj.Pkg().Name() || sel != obj.Name() {
+			continue
+		}
+		c = newConcrete(p, x, sel, m, m.Obj().Pos())
 		break
 	}
 
@@ -171,22 +179,8 @@ func methoderFromType(typ types.Type) Methoder {
 	return m
 }
 
-func exprFilter(t types.TypeAndValue, sel string, x string) Methoder {
-	m := methoderFromType(t.Type)
-	if m == nil {
-		return nil
-	}
-
-	obj := m.Obj()
-	if obj.Pkg() == nil || x != obj.Pkg().Name() || sel != obj.Name() {
-		return nil
-	}
-
-	return m
-}
-
-func newConcrete(p *packages.Package, x, sel string, m Methoder) *Concrete {
-	c := &Concrete{Name: sel, PackageName: x, PackagePath: m.Obj().Pkg().Path(), FoundIn: p.Name, AllMethods: make([]Method, 0, m.NumMethods()), Used: map[string]struct{}{}}
+func newConcrete(p *packages.Package, x, sel string, m Methoder, pos token.Pos) *Concrete {
+	c := &Concrete{Name: sel, PackageName: x, PackagePath: m.Obj().Pkg().Path(), FoundIn: p.Name, AllMethods: make([]Method, 0, m.NumMethods()), Used: map[string]struct{}{}, Pos: pos}
 
 	c.AllMethods = getMethods(m, x != p.Name)
 
@@ -249,7 +243,43 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 			continue
 		}
 
-		c.Used[n.Name] = struct{}{}
+		nPos := p.Fset.Position(n.Pos())
+
+		var withinSelf bool
+		for _, f := range p.Syntax {
+			fPos := p.Fset.Position(f.Pos())
+			if fPos.Filename != nPos.Filename {
+				continue
+			}
+
+			// Walk the ast tree to see who called us
+			ast.Inspect(f, func(node ast.Node) bool {
+				if node == nil {
+					return true
+				}
+
+				switch v := node.(type) {
+				case *ast.FuncDecl:
+					if v.Pos() < n.Pos() && v.End() > n.Pos() && v.Recv != nil {
+						f := v.Recv.List[0]
+						for i, t := range p.TypesInfo.Defs {
+							if i.Pos() == f.Pos() {
+								m := methoderFromType(t.Type())
+								if m.Obj().Pos() == c.Pos {
+									// The method receiver is the same type as the concrete
+									withinSelf = true
+								}
+							}
+						}
+					}
+				}
+				return true
+			})
+		}
+
+		if !withinSelf {
+			c.Used[n.Name] = struct{}{}
+		}
 	}
 
 	locateInterface(c, p, cfg)
