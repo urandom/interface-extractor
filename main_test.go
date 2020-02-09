@@ -21,7 +21,7 @@ func Test_locateType_write(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{name: "test", args: args{selector: "bar.Bar", pattern: "./testdata"}, want: constBarUsage},
+		{name: "unused and embedded", args: args{selector: "bar.Bar", pattern: "./testdata"}, want: constBarUsage},
 		{name: "ignore method used by the implementation", args: args{selector: "testdata.Baz", pattern: "./testdata"}, want: someBazUsage},
 	}
 	for _, tt := range tests {
@@ -59,6 +59,7 @@ package testdata
 
 type Barer interface {
 	Const() int
+	EmbeddedMethod(i int) string
 }
 	`
 	someBazUsage = `

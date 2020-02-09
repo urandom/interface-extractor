@@ -1,6 +1,8 @@
 package testdata
 
 import (
+	"log"
+
 	baar "github.com/urandom/interface-extractor/testdata/bar"
 )
 
@@ -14,6 +16,7 @@ func (b Baz) impl() {}
 
 func ProcessBar(b *baar.Bar) int {
 	a := b.Const()
+	log.Println(b.EmbeddedMethod(a))
 
 	return a * 4
 }

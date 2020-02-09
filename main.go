@@ -109,6 +109,9 @@ type Method struct {
 	Name    string
 	Params  []Param
 	Returns []Param
+
+	EmbeddedPackagePath string
+	EmbeddedName        string
 }
 
 type Param struct {
@@ -224,6 +227,27 @@ func getMethods(m Methoder, differentPkg bool) []Method {
 		methods = append(methods, m)
 	}
 
+	if strct, ok := m.Underlying().(*types.Struct); ok {
+		for i := 0; i < strct.NumFields(); i++ {
+			f := strct.Field(i)
+			if !f.Embedded() {
+				continue
+			}
+
+			em := methoderFromType(f.Type())
+			if em == nil || em.Obj() == nil || em.Obj().Pkg() == nil {
+				continue
+			}
+
+			eMethods := getMethods(em, differentPkg)
+			for i := range eMethods {
+				eMethods[i].EmbeddedName = em.Obj().Name()
+				eMethods[i].EmbeddedPackagePath = em.Obj().Pkg().Path()
+			}
+			methods = append(methods, eMethods...)
+		}
+	}
+
 	return methods
 }
 
@@ -239,8 +263,21 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 		}
 
 		m := methoderFromType(sig.Recv().Type())
-		if m == nil || m.Obj() == nil || m.Obj().Pkg() == nil || m.Obj().Pkg().Path() != c.PackagePath || m.Obj().Name() != c.Name {
+		if m == nil || m.Obj() == nil || m.Obj().Pkg() == nil {
 			continue
+		}
+		if m.Obj().Pkg().Path() != c.PackagePath || m.Obj().Name() != c.Name {
+			// Check to see if the method comes from an embedded type
+			var method Method
+			for _, m := range c.AllMethods {
+				if m.Name == n.Name {
+					method = m
+					break
+				}
+			}
+			if method.EmbeddedName != m.Obj().Name() || method.EmbeddedPackagePath != m.Obj().Pkg().Path() {
+				continue
+			}
 		}
 
 		nPos := p.Fset.Position(n.Pos())

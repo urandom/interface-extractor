@@ -1,8 +1,14 @@
 package bar
 
-type Bar struct{}
+import "strconv"
+
+type Bar struct {
+	Alpha
+}
 
 type Baz struct{}
+
+type Alpha struct{}
 
 func (b Bar) Const() int {
 	b.AnotherMethodCalledFromUsedOne()
@@ -14,4 +20,8 @@ func (b Bar) SomeUnusedMethod(baz Baz) float64 {
 }
 
 func (b Bar) AnotherMethodCalledFromUsedOne() {
+}
+
+func (a Alpha) EmbeddedMethod(i int) string {
+	return strconv.Itoa(i)
 }
