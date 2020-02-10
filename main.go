@@ -252,71 +252,92 @@ func getMethods(m Methoder, differentPkg bool) []Method {
 }
 
 func locateUsedMethods(c *Concrete, p *packages.Package) {
-	for n, obj := range p.TypesInfo.Uses {
-		if obj == nil {
-			continue
-		}
+	for _, f := range p.Syntax {
+		var inCall bool
+		var method string
+		var methodRange [2]token.Pos
 
-		sig, ok := obj.Type().(*types.Signature)
-		if !ok || sig.Recv() == nil {
-			continue
-		}
-
-		m := methoderFromType(sig.Recv().Type())
-		if m == nil || m.Obj() == nil || m.Obj().Pkg() == nil {
-			continue
-		}
-		if m.Obj().Pkg().Path() != c.PackagePath || m.Obj().Name() != c.Name {
-			// Check to see if the method comes from an embedded type
-			var method Method
-			for _, m := range c.AllMethods {
-				if m.Name == n.Name {
-					method = m
-					break
-				}
-			}
-			if method.EmbeddedName != m.Obj().Name() || method.EmbeddedPackagePath != m.Obj().Pkg().Path() {
-				continue
-			}
-		}
-
-		nPos := p.Fset.Position(n.Pos())
-
-		var withinSelf bool
-		for _, f := range p.Syntax {
-			fPos := p.Fset.Position(f.Pos())
-			if fPos.Filename != nPos.Filename {
-				continue
+		// Look for CallExpr -> SelectorExpr -> Ident chains
+		ast.Inspect(f, func(node ast.Node) bool {
+			if node == nil {
+				return true
 			}
 
-			// Walk the ast tree to see who called us
-			ast.Inspect(f, func(node ast.Node) bool {
-				if node == nil {
-					return true
-				}
-
-				switch v := node.(type) {
-				case *ast.FuncDecl:
-					if v.Pos() < n.Pos() && v.End() > n.Pos() && v.Recv != nil {
-						f := v.Recv.List[0]
-						for i, t := range p.TypesInfo.Defs {
-							if i.Pos() == f.Pos() {
-								m := methoderFromType(t.Type())
-								if m.Obj().Pos() == c.Pos {
-									// The method receiver is the same type as the concrete
-									withinSelf = true
+			switch v := node.(type) {
+			case *ast.FuncDecl:
+				if v.Recv == nil {
+					// Check if the function is a constructor/factory for the
+					// concrete type
+					if v.Name.Name == "NewBaz" {
+						if v.Type.Params != nil {
+							for _, f := range v.Type.Params.List {
+								tv := p.TypesInfo.Types[f.Type]
+								m := methoderFromType(tv.Type)
+								if m != nil && m.Obj().Pos() == c.Pos {
+									// The concrete type is being passed, it's
+									// not a constructor
+									return true
 								}
 							}
 						}
+						if v.Type.Results != nil {
+							var hasType bool
+							for _, f := range v.Type.Results.List {
+								tv := p.TypesInfo.Types[f.Type]
+								m := methoderFromType(tv.Type)
+								if m != nil && m.Obj().Pos() == c.Pos {
+									hasType = true
+									break
+								}
+							}
+
+							if hasType {
+								methodRange[0], methodRange[1] = v.Pos(), v.End()
+							}
+						}
+					}
+				} else {
+					// Check if the receiver if the concrete type, in order to
+					// filter out uses from within it
+					f := v.Recv.List[0]
+					tv := p.TypesInfo.Types[f.Type]
+					m := methoderFromType(tv.Type)
+					if m != nil && m.Obj().Pos() == c.Pos {
+						methodRange[0], methodRange[1] = v.Pos(), v.End()
 					}
 				}
-				return true
-			})
-		}
+			case *ast.CallExpr:
+				inCall = true
+			case *ast.SelectorExpr:
+				if inCall {
+					inCall = false
+					method = v.Sel.Name
+				}
+			case *ast.Ident:
+				if method == "" {
+					return true
+				}
+				defer func() {
+					method = ""
+				}()
 
-		if !withinSelf {
-			c.Used[n.Name] = struct{}{}
-		}
+				obj := p.TypesInfo.Uses[v]
+				if obj == nil {
+					return true
+				}
+				m := methoderFromType(obj.Type())
+				if m == nil {
+					return true
+				}
+				if c.Pos == m.Obj().Pos() {
+					if v.Pos() < methodRange[0] || v.Pos() > methodRange[1] {
+						c.Used[method] = struct{}{}
+					}
+				}
+			}
+
+			return true
+		})
 	}
 
 	locateInterface(c, p, cfg)

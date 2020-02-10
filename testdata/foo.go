@@ -14,6 +14,13 @@ func (b *Baz) SomeMethod(i int) {
 
 func (b Baz) impl() {}
 
+func NewBaz(data string) (Baz, error) {
+	b := Baz{}
+	b.impl()
+
+	return b, nil
+}
+
 func ProcessBar(b *baar.Bar) int {
 	a := b.Const()
 	log.Println(b.EmbeddedMethod(a))
@@ -23,4 +30,8 @@ func ProcessBar(b *baar.Bar) int {
 
 func ProcessBaz(b Baz) {
 	b.SomeMethod(42)
+}
+
+func ProcessAlpha(a baar.Alpha) {
+	a.AnotherAlphaMethod()
 }

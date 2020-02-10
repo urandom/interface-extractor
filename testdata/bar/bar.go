@@ -25,3 +25,5 @@ func (b Bar) AnotherMethodCalledFromUsedOne() {
 func (a Alpha) EmbeddedMethod(i int) string {
 	return strconv.Itoa(i)
 }
+
+func (a Alpha) AnotherAlphaMethod() {}
