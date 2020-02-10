@@ -268,32 +268,30 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 				if v.Recv == nil {
 					// Check if the function is a constructor/factory for the
 					// concrete type
-					if v.Name.Name == "NewBaz" {
-						if v.Type.Params != nil {
-							for _, f := range v.Type.Params.List {
-								tv := p.TypesInfo.Types[f.Type]
-								m := methoderFromType(tv.Type)
-								if m != nil && m.Obj().Pos() == c.Pos {
-									// The concrete type is being passed, it's
-									// not a constructor
-									return true
-								}
+					if v.Type.Params != nil {
+						for _, f := range v.Type.Params.List {
+							tv := p.TypesInfo.Types[f.Type]
+							m := methoderFromType(tv.Type)
+							if m != nil && m.Obj().Pos() == c.Pos {
+								// The concrete type is being passed, it's
+								// not a constructor
+								return true
 							}
 						}
-						if v.Type.Results != nil {
-							var hasType bool
-							for _, f := range v.Type.Results.List {
-								tv := p.TypesInfo.Types[f.Type]
-								m := methoderFromType(tv.Type)
-								if m != nil && m.Obj().Pos() == c.Pos {
-									hasType = true
-									break
-								}
+					}
+					if v.Type.Results != nil {
+						var hasType bool
+						for _, f := range v.Type.Results.List {
+							tv := p.TypesInfo.Types[f.Type]
+							m := methoderFromType(tv.Type)
+							if m != nil && m.Obj().Pos() == c.Pos {
+								hasType = true
+								break
 							}
+						}
 
-							if hasType {
-								methodRange[0], methodRange[1] = v.Pos(), v.End()
-							}
+						if hasType {
+							methodRange[0], methodRange[1] = v.Pos(), v.End()
 						}
 					}
 				} else {
