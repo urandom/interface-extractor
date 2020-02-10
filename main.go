@@ -405,6 +405,9 @@ func writeTo(c *Concrete, w io.Writer, cfg config) error {
 
 	imports := map[string]string{}
 	for _, m := range c.AllMethods {
+		if _, ok := c.Used[m.Name]; !ok {
+			continue
+		}
 		params := make([]Param, len(m.Params)+len(m.Returns))
 		copy(params, m.Params)
 		copy(params[len(m.Params):], m.Returns)
