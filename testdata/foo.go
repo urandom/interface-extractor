@@ -1,6 +1,7 @@
 package testdata
 
 import (
+	"fmt"
 	"log"
 
 	baar "github.com/urandom/interface-extractor/testdata/bar"
@@ -34,4 +35,12 @@ func ProcessBaz(b Baz) {
 
 func ProcessAlpha(a baar.Alpha) {
 	a.AnotherAlphaMethod()
+}
+
+func UseStreamer(s baar.Streamer) {
+	fmt.Println(<-s.Stream())
+}
+
+func UseStreamConsumer(c baar.StreamConsumer) {
+	c.Consume(nil)
 }
