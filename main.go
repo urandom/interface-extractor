@@ -254,8 +254,6 @@ func getMethods(m Methoder, differentPkg bool) []Method {
 
 func locateUsedMethods(c *Concrete, p *packages.Package) {
 	for _, f := range p.Syntax {
-		var inCall bool
-		var method string
 		var methodRange [2]token.Pos
 
 		// Look for CallExpr -> SelectorExpr -> Ident chains
@@ -266,6 +264,8 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 
 			switch v := node.(type) {
 			case *ast.FuncDecl:
+				// Checks if the function belongs to the concrete type, so that
+				// subsequent calls to its methods get filtered out.
 				if v.Recv == nil {
 					// Check if the function is a constructor/factory for the
 					// concrete type
@@ -305,32 +305,30 @@ func locateUsedMethods(c *Concrete, p *packages.Package) {
 						methodRange[0], methodRange[1] = v.Pos(), v.End()
 					}
 				}
-			case *ast.CallExpr:
-				inCall = true
-			case *ast.SelectorExpr:
-				if inCall {
-					inCall = false
-					method = v.Sel.Name
-				}
 			case *ast.Ident:
-				if method == "" {
+				o := p.TypesInfo.Uses[v]
+				f, ok := o.(*types.Func)
+				if !ok {
 					return true
 				}
-				defer func() {
-					method = ""
-				}()
+				sig, ok := f.Type().(*types.Signature)
+				if !ok {
+					return true
+				}
 
-				obj := p.TypesInfo.Uses[v]
-				if obj == nil {
+				if sig.Recv() == nil {
 					return true
 				}
-				m := methoderFromType(obj.Type())
+
+				m := methoderFromType(sig.Recv().Type())
 				if m == nil {
 					return true
 				}
 				if c.Pos == m.Obj().Pos() {
+					// Make sure the position of the node is not within a
+					// method of the concrete type
 					if v.Pos() < methodRange[0] || v.Pos() > methodRange[1] {
-						c.Used[method] = struct{}{}
+						c.Used[f.Name()] = struct{}{}
 					}
 				}
 			}
